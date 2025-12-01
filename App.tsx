@@ -8,7 +8,6 @@ import HistoryPanel from './components/HistoryPanel';
 import { TailoredCV, CVFile, CvTemplate, HistoryEntry, GenerationResult } from './types';
 import { generateCvAndCoverLetter } from './services/geminiService';
 import ThemeSwitcher from './components/ThemeSwitcher';
-import QuickEditPanel from './components/QuickEditPanel';
 
 interface AppState {
   cv: string;
@@ -19,9 +18,6 @@ interface AppState {
   error: string | null;
   result: GenerationResult | null;
   history: HistoryEntry[];
-  quickEditResult: string;
-  isQuickEditLoading: boolean;
-  quickEditError: string | null;
 }
 
 type AppAction =
@@ -34,10 +30,7 @@ type AppAction =
   | { type: 'GENERATE_ERROR'; payload: string }
   | { type: 'RESTORE_HISTORY'; payload: HistoryEntry }
   | { type: 'SET_HISTORY'; payload: HistoryEntry[] }
-  | { type: 'CLEAR_HISTORY' }
-  | { type: 'QUICK_EDIT_START' }
-  | { type: 'QUICK_EDIT_SUCCESS'; payload: string }
-  | { type: 'QUICK_EDIT_ERROR'; payload: string };
+  | { type: 'CLEAR_HISTORY' };
 
 const initialState: AppState = {
   cv: '',
@@ -48,9 +41,6 @@ const initialState: AppState = {
   error: null,
   result: null,
   history: [],
-  quickEditResult: '',
-  isQuickEditLoading: false,
-  quickEditError: null,
 };
 
 const appReducer = (state: AppState, action: AppAction): AppState => {
@@ -87,12 +77,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
     case 'CLEAR_HISTORY':
       localStorage.removeItem('cvHistory');
       return { ...state, history: [] };
-    case 'QUICK_EDIT_START':
-      return { ...state, isQuickEditLoading: true, quickEditError: null, quickEditResult: '' };
-    case 'QUICK_EDIT_SUCCESS':
-      return { ...state, isQuickEditLoading: false, quickEditResult: action.payload };
-    case 'QUICK_EDIT_ERROR':
-      return { ...state, isQuickEditLoading: false, quickEditError: action.payload };
     default:
       return state;
   }
@@ -164,14 +148,6 @@ const App: React.FC = () => {
       dispatch({ type: 'GENERATE_ERROR', payload: errorMessage });
     }
   };
-  
-  const handleQuickEdit = async (text: string, request: string) => {
-    // This function would call a new, simpler Gemini service function
-    // For now, we'll mock it
-    console.log("Quick edit requested for:", text, "with request:", request);
-    // You would create a new service function e.g., `improveTextSnippet`
-    // that takes the CV, job description, text and request as context.
-  };
 
   const handleRestoreHistory = (entry: HistoryEntry) => {
     if (isLoading) return;
@@ -234,13 +210,6 @@ const App: React.FC = () => {
                     isLoading={isLoading}
                     tailoredCv={state.result?.tailoredCv ?? null}
                 />
-                 <QuickEditPanel
-                    onGenerate={handleQuickEdit}
-                    result={state.quickEditResult}
-                    isLoading={state.isQuickEditLoading}
-                    error={state.quickEditError}
-                    isContextReady={state.generationState === 'success'}
-                 />
             </div>
           </div>
         </div>
