@@ -23,6 +23,23 @@ export interface ATSAnalysis {
   formattingRisk: 'Low' | 'Medium' | 'High';
 }
 
+export interface CareerRoadmapStep {
+  title: string;
+  description: string;
+  timeframe: string;
+  type: 'skill' | 'certification' | 'project';
+}
+
+export interface SalaryInsight {
+  estimatedRange: string;
+  negotiationPoints: string[];
+  scripts: {
+    aggressive: string;
+    balanced: string;
+    flexible: string;
+  };
+}
+
 export interface TailoredCV {
   name: string;
   contact: {
@@ -55,7 +72,9 @@ export interface GenerationResult {
     strategy: ApplicationStrategy;
     tailoredCv: TailoredCV;
     atsAnalysis: ATSAnalysis;
-    analysis: string; // Detailed fit analysis HTML
+    careerRoadmap: CareerRoadmapStep[];
+    salaryInsight: SalaryInsight;
+    analysis: string;
     coverLetters: {
         versionA: string;
         versionB: string;

@@ -1,5 +1,7 @@
 {
   "name": "🚀 AI toolkit for job applications",
   "description": "Your complete AI toolkit for job applications. Upload a CV and job description to get a tailored resume, a detailed fit analysis, winning cover letters, and AI-generated interview questions and answers to help you land your dream job.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }

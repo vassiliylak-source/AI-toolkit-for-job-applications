@@ -22,6 +22,7 @@ interface AppState {
   history: HistoryEntry[];
   refinementResult: string;
   isRefining: boolean;
+  isStrategyRefining: boolean;
 }
 
 type AppAction =
@@ -31,6 +32,7 @@ type AppAction =
   | { type: 'SET_TEMPLATE'; payload: CvTemplate }
   | { type: 'GENERATE_STRATEGY_START' }
   | { type: 'GENERATE_STRATEGY_SUCCESS'; payload: ApplicationStrategy }
+  | { type: 'REFINE_STRATEGY_START' }
   | { type: 'GENERATE_APPLICATION_START' }
   | { type: 'GENERATE_APPLICATION_SUCCESS'; payload: { result: GenerationResult; entry: HistoryEntry } }
   | { type: 'GENERATE_ERROR'; payload: string }
@@ -53,6 +55,7 @@ const initialState: AppState = {
   history: [],
   refinementResult: '',
   isRefining: false,
+  isStrategyRefining: false,
 };
 
 const appReducer = (state: AppState, action: AppAction): AppState => {
@@ -62,13 +65,14 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
     case 'SET_JOB_DESCRIPTION': return { ...state, jobDescription: action.payload };
     case 'SET_TEMPLATE': return { ...state, selectedTemplate: action.payload };
     case 'GENERATE_STRATEGY_START': return { ...state, generationState: 'loading-strategy', error: null, strategy: null };
-    case 'GENERATE_STRATEGY_SUCCESS': return { ...state, generationState: 'awaiting-strategy-approval', strategy: action.payload };
+    case 'REFINE_STRATEGY_START': return { ...state, isStrategyRefining: true, error: null };
+    case 'GENERATE_STRATEGY_SUCCESS': return { ...state, generationState: 'awaiting-strategy-approval', strategy: action.payload, isStrategyRefining: false };
     case 'GENERATE_APPLICATION_START': return { ...state, generationState: 'loading-application', error: null };
     case 'GENERATE_APPLICATION_SUCCESS':
       const newHistory = [action.payload.entry, ...state.history];
       localStorage.setItem('cvHistory', JSON.stringify(newHistory));
       return { ...state, generationState: 'success', result: action.payload.result, history: newHistory };
-    case 'GENERATE_ERROR': return { ...state, generationState: 'error', error: action.payload };
+    case 'GENERATE_ERROR': return { ...state, generationState: 'error', error: action.payload, isStrategyRefining: false };
     case 'RESTORE_HISTORY':
       return {
         ...state,
@@ -117,6 +121,18 @@ const App: React.FC = () => {
     }
   };
 
+  const handleRefineStrategy = async (feedback: string) => {
+    if (!state.strategy) return;
+    dispatch({ type: 'REFINE_STRATEGY_START' });
+    try {
+        const cvInput = state.cvFile || state.cv;
+        const refinedStrategy = await generateApplicationStrategy(cvInput!, state.jobDescription, feedback, state.strategy);
+        dispatch({ type: 'GENERATE_STRATEGY_SUCCESS', payload: refinedStrategy });
+    } catch (e: any) {
+        dispatch({ type: 'GENERATE_ERROR', payload: e.message });
+    }
+  };
+
   const handleExecuteApplication = async () => {
     if (!state.strategy) return;
     dispatch({ type: 'GENERATE_APPLICATION_START' });
@@ -138,7 +154,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleRefine = async (text: string, request: string) => {
+  const handleRefineSnippet = async (text: string, request: string) => {
     dispatch({ type: 'SET_REFINING', payload: true });
     try {
       const result = await refineContent(text, request, { cv: state.result?.tailoredCv, jd: state.jobDescription });
@@ -154,9 +170,9 @@ const App: React.FC = () => {
         <div className="max-w-screen-2xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold leading-tight text-gray-900 dark:text-gray-100 flex items-center gap-2">
-              🚀 Application Toolkit <span className="text-xs bg-brand-primary text-white px-2 py-0.5 rounded-full font-normal">v2.0 Elite</span>
+              🚀 Application Toolkit <span className="text-xs bg-brand-primary text-white px-2 py-0.5 rounded-full font-normal">v3.1 Strategist</span>
             </h1>
-            <p className="text-gray-600 dark:text-gray-400 text-sm">Strategic Multi-Stage AI Application Builder</p>
+            <p className="text-gray-600 dark:text-gray-400 text-sm">Next-Gen Multi-Stage Career Growth Platform</p>
           </div>
           <ThemeSwitcher />
         </div>
@@ -192,7 +208,9 @@ const App: React.FC = () => {
                 <StrategyPanel 
                   strategy={state.strategy} 
                   onExecute={handleExecuteApplication} 
+                  onRefine={handleRefineStrategy}
                   isExecuting={state.generationState === 'loading-application'}
+                  isRefining={state.isStrategyRefining}
                   isCompleted={state.generationState === 'success'}
                 />
               )}
@@ -219,13 +237,15 @@ const App: React.FC = () => {
                 <OutputPanel 
                     analysis={state.result?.analysis ?? ''} 
                     atsAnalysis={state.result?.atsAnalysis ?? null}
+                    careerRoadmap={state.result?.careerRoadmap}
+                    salaryInsight={state.result?.salaryInsight}
                     coverLetters={state.result?.coverLetters ?? null} 
                     interviewPrep={state.result?.interviewPrep ?? null} 
                     isLoading={state.generationState === 'loading-application'}
                     tailoredCv={state.result?.tailoredCv ?? null}
                 />
                 <QuickEditPanel 
-                    onGenerate={handleRefine}
+                    onGenerate={handleRefineSnippet}
                     result={state.refinementResult}
                     isLoading={state.isRefining}
                     error={null}
