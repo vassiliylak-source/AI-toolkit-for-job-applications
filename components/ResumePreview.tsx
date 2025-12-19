@@ -33,15 +33,16 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({ cvData, isLoading, templa
 
   const handleDownloadDoc = () => {
     if (!cvData) return;
-    // Fix: Pass the current template to the generator
     const htmlContent = getUniversalDocHtml(cvData, template);
     
-    const blob = new Blob([htmlContent], {
-        type: 'application/msword'
+    // The prefix '\ufeff' (UTF-8 BOM) is crucial for Microsoft Word to open the file correctly
+    const blob = new Blob(['\ufeff', htmlContent], {
+        type: 'application/vnd.ms-word'
     });
     
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
+    link.href = url;
     link.download = `${cvData.name.replace(/\s+/g, '_')}_CV.doc`;
     
     document.body.appendChild(link);
@@ -49,7 +50,7 @@ const ResumePreview: React.FC<ResumePreviewProps> = ({ cvData, isLoading, templa
 
     setTimeout(() => {
         document.body.removeChild(link);
-        URL.revokeObjectURL(link.href);
+        URL.revokeObjectURL(url);
     }, 100);
   };
 

@@ -77,17 +77,23 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ analysis, coverLetters, inter
   const handleDownloadPrepDoc = () => {
       if (!interviewPrep) return;
       const htmlContent = getInterviewPrepAsHtml('Interview Preparation', interviewPrep);
-      const header = "<?xml version='1.0' encoding='UTF-8'?><?mso-application progid='Word.Document'?><html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Interview Prep</title></head><body>";
-      const footer = "</body></html>";
-      const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(header + htmlContent + footer);
       
+      const blob = new Blob(['\ufeff', htmlContent], {
+          type: 'application/vnd.ms-word'
+      });
+      
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = source;
+      link.href = url;
       link.download = `Interview_Prep.doc`;
       
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      
+      setTimeout(() => {
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+      }, 100);
   };
 
   const handleDownloadPrepPdf = () => {

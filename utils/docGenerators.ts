@@ -20,32 +20,37 @@ const COMMON_STYLES = `
     .bold { font-weight: bold; }
 `;
 
-const createDocShell = (title: string, body: string, extraStyles: string = '') => `
-    <?xml version="1.0" encoding="UTF-8"?>
-    <?mso-application progid="Word.Document"?>
-    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:word' xmlns='http://www.w3.org/TR/REC-html40'>
-    <head>
-        <meta charset='utf-8'>
-        <title>${escapeHtml(title)}</title>
-        <!--[if gte mso 9]>
-        <xml>
-        <w:WordDocument>
-            <w:View>Print</w:View>
-            <w:Zoom>100</w:Zoom>
-            <w:DoNotOptimizeForBrowser/>
-        </w:WordDocument>
-        </xml>
-        <![endif]-->
-        <style>
-            ${COMMON_STYLES}
-            ${extraStyles}
-        </style>
-    </head>
-    <body>
-        ${body}
-    </body>
-    </html>
-`;
+const createDocShell = (title: string, body: string, extraStyles: string = '') => {
+    // The prefix ensures Word treats the file as a true Document rather than a Web Page
+    const header = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' 
+              xmlns:w='urn:schemas-microsoft-com:office:word' 
+              xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+            <meta charset='utf-8'>
+            <title>${escapeHtml(title)}</title>
+            <!--[if gte mso 9]>
+            <xml>
+                <w:WordDocument>
+                    <w:View>Print</w:View>
+                    <w:Zoom>100</w:Zoom>
+                    <w:DoNotOptimizeForBrowser/>
+                </w:WordDocument>
+            </xml>
+            <![endif]-->
+            <style>
+                @page { size: 8.5in 11in; margin: 1in 1in 1in 1in; mso-header-margin: .5in; mso-footer-margin: .5in; mso-paper-source: 0; }
+                ${COMMON_STYLES}
+                ${extraStyles}
+            </style>
+        </head>
+        <body>
+            ${body}
+        </body>
+        </html>
+    `;
+    return header.trim();
+};
 
 const renderSection = (title: string, content: string) => {
     if (!content.trim()) return '';
@@ -309,17 +314,18 @@ export const getUniversalDocHtml = (cvData: TailoredCV, template: CvTemplate): s
 };
 
 export const getInterviewPrepAsHtml = (title: string, data: { question: string; answer:string; }[]): string => {
-    let html = `<div style="font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.4; color: #333;">`;
-    html += `<h1 style="font-size: 18pt; color: #000; border-bottom: 2px solid #ddd; padding-bottom: 5px;">${escapeHtml(title)}</h1>`;
-    data.forEach(item => {
-        html += `<div style="margin-top: 20px; page-break-inside: avoid;">`;
-        html += `<h2 style="font-size: 13pt; color: #4f46e5; margin-bottom: 8px;">${escapeHtml(item.question)}</h2>`;
-        const formattedAnswer = escapeHtml(item.answer).replace(/\n/g, '<br />');
-        html += `<p style="font-size: 11pt; color: #333;">${formattedAnswer}</p>`;
-        html += `</div>`;
-    });
-    html += `</div>`;
-    return html;
+    const body = `
+        <div style="font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.4; color: #333;">
+            <h1 style="font-size: 18pt; color: #000; border-bottom: 2px solid #ddd; padding-bottom: 5px;">${escapeHtml(title)}</h1>
+            ${data.map(item => `
+                <div style="margin-top: 20px; page-break-inside: avoid;">
+                    <h2 style="font-size: 13pt; color: #4f46e5; margin-bottom: 8px;">${escapeHtml(item.question)}</h2>
+                    <p style="font-size: 11pt; color: #333;">${escapeHtml(item.answer).replace(/\n/g, '<br />')}</p>
+                </div>
+            `).join('')}
+        </div>
+    `;
+    return createDocShell(title, body);
 };
 
 export const cvToPlainText = (cv: TailoredCV): string => {
