@@ -1,4 +1,3 @@
-
 // Fix: Implemented the main App component to structure the application.
 import React, { useReducer, useEffect } from 'react';
 import InputPanel from './components/InputPanel';
@@ -209,6 +208,7 @@ const App: React.FC = () => {
                     interviewPrep={state.result?.interviewPrep ?? null} 
                     isLoading={isLoading}
                     tailoredCv={state.result?.tailoredCv ?? null}
+                    jdKeySkills={state.result?.jdKeySkills}
                 />
             </div>
           </div>

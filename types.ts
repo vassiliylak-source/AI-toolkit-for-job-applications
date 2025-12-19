@@ -54,6 +54,7 @@ export interface TailoredCV {
 
 export interface GenerationResult {
     tailoredCv: TailoredCV;
+    jdKeySkills: string[];
     analysis: string;
     coverLetters: {
         versionA: string;

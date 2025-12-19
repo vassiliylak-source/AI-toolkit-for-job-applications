@@ -4,7 +4,6 @@ import { escapeHtml } from './textUtils';
 
 // --- Shared Styles & Helpers ---
 
-// Word-compatible basic styles
 const COMMON_STYLES = `
     body { font-family: 'Calibri', 'Arial', sans-serif; font-size: 11pt; color: #1f2937; line-height: 1.4; margin: 0; padding: 0; }
     table { border-collapse: collapse; width: 100%; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
@@ -17,15 +16,13 @@ const COMMON_STYLES = `
     p { margin: 0 0 5px 0; }
     a { color: #4f46e5; text-decoration: none; }
     .text-small { font-size: 10pt; color: #6b7280; }
-    .text-right { text-align: right; }
-    .text-center { text-align: center; }
     .italic { font-style: italic; }
     .bold { font-weight: bold; }
-    .uppercase { text-transform: uppercase; }
 `;
 
-// Added XML namespace to force Print View in Word
 const createDocShell = (title: string, body: string, extraStyles: string = '') => `
+    <?xml version="1.0" encoding="UTF-8"?>
+    <?mso-application progid="Word.Document"?>
     <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:word' xmlns='http://www.w3.org/TR/REC-html40'>
     <head>
         <meta charset='utf-8'>
@@ -33,9 +30,9 @@ const createDocShell = (title: string, body: string, extraStyles: string = '') =
         <!--[if gte mso 9]>
         <xml>
         <w:WordDocument>
-        <w:View>Print</w:View>
-        <w:Zoom>100</w:Zoom>
-        <w:DoNotOptimizeForBrowser/>
+            <w:View>Print</w:View>
+            <w:Zoom>100</w:Zoom>
+            <w:DoNotOptimizeForBrowser/>
         </w:WordDocument>
         </xml>
         <![endif]-->
@@ -50,589 +47,247 @@ const createDocShell = (title: string, body: string, extraStyles: string = '') =
     </html>
 `;
 
+const renderSection = (title: string, content: string) => {
+    if (!content.trim()) return '';
+    return `<h2>${escapeHtml(title)}</h2>${content}`;
+};
+
+const renderOptionalSections = (cv: TailoredCV) => {
+    let sections = '';
+    
+    if (cv.professionalDevelopment && cv.professionalDevelopment.length > 0) {
+        sections += renderSection('Professional Development', cv.professionalDevelopment.map(pd => `
+            <div style="margin-bottom: 5px;">
+                <p><strong>${escapeHtml(pd.name)}</strong>${pd.date ? `<span style="float:right;">${escapeHtml(pd.date)}</span>` : ''}</p>
+                ${pd.institution ? `<p class="italic text-small">${escapeHtml(pd.institution)}</p>` : ''}
+            </div>
+        `).join(''));
+    }
+
+    if (cv.certifications && cv.certifications.length > 0) {
+        sections += renderSection('Certifications', cv.certifications.map(cert => `
+            <div style="margin-bottom: 5px;">
+                <p><strong>${escapeHtml(cert.name)}</strong>${cert.date ? `<span style="float:right;">${escapeHtml(cert.date)}</span>` : ''}</p>
+                ${cert.issuer ? `<p class="italic text-small">${escapeHtml(cert.issuer)}</p>` : ''}
+            </div>
+        `).join(''));
+    }
+
+    if (cv.publications && cv.publications.length > 0) {
+        sections += renderSection('Publications', cv.publications.map(pub => `
+            <div style="margin-bottom: 5px;">
+                <p><strong>${escapeHtml(pub.title)}</strong>${pub.date ? `<span style="float:right;">${escapeHtml(pub.date)}</span>` : ''}</p>
+                ${pub.journal ? `<p class="italic text-small">${escapeHtml(pub.journal)}</p>` : ''}
+            </div>
+        `).join(''));
+    }
+
+    if (cv.awards && cv.awards.length > 0) {
+        sections += renderSection('Awards', cv.awards.map(award => `
+            <div style="margin-bottom: 5px;">
+                <p><strong>${escapeHtml(award.name)}</strong>${award.date ? `<span style="float:right;">${escapeHtml(award.date)}</span>` : ''}</p>
+                ${award.issuer ? `<p class="italic text-small">${escapeHtml(award.issuer)}</p>` : ''}
+            </div>
+        `).join(''));
+    }
+
+    return sections;
+};
+
 // --- Template Generators ---
 
 const generateModern = (cv: TailoredCV) => {
-    const styles = `
-        h2 { border-bottom: 2px solid #4f46e5; color: #1f2937; padding-bottom: 3px; }
-        .header { text-align: center; margin-bottom: 20px; }
-    `;
-
+    const styles = `h2 { border-bottom: 2px solid #4f46e5; padding-bottom: 3px; }`;
     const body = `
-        <div class="header">
-            <h1 style="color: #111827;">${escapeHtml(cv.name)}</h1>
-            <p class="text-small">
-                ${escapeHtml(cv.contact.email)}
-                ${cv.contact.phone ? ` • ${escapeHtml(cv.contact.phone)}` : ''}
-                ${cv.contact.linkedin ? ` • <a href="${cv.contact.linkedin}">LinkedIn</a>` : ''}
-            </p>
+        <div style="text-align: center; margin-bottom: 20px;">
+            <h1>${escapeHtml(cv.name)}</h1>
+            <p class="text-small">${escapeHtml(cv.contact.email)}${cv.contact.phone ? ` • ${escapeHtml(cv.contact.phone)}` : ''}${cv.contact.linkedin ? ` • ${escapeHtml(cv.contact.linkedin)}` : ''}</p>
         </div>
-
-        <h2>Summary</h2>
-        <p>${escapeHtml(cv.summary)}</p>
-
+        <h2>Summary</h2><p>${escapeHtml(cv.summary)}</p>
         <h2>Experience</h2>
         ${cv.experience.map(exp => `
             <div style="margin-bottom: 10px;">
-                <table width="100%">
-                    <tr>
-                        <td style="padding:0;"><h3>${escapeHtml(exp.jobTitle)}</h3></td>
-                        <td style="padding:0; text-align: right;" class="text-small bold">${escapeHtml(exp.dates)}</td>
-                    </tr>
-                </table>
-                <p class="italic text-small" style="margin-bottom: 2px;">${escapeHtml(exp.company)} - ${escapeHtml(exp.location)}</p>
-                <ul>
-                    ${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
-                </ul>
+                <table width="100%"><tr><td><h3>${escapeHtml(exp.jobTitle)}</h3></td><td style="text-align:right;">${escapeHtml(exp.dates)}</td></tr></table>
+                <p class="italic text-small">${escapeHtml(exp.company)} - ${escapeHtml(exp.location)}</p>
+                <ul>${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>
             </div>
         `).join('')}
-
         <h2>Education</h2>
         ${cv.education.map(edu => `
             <div style="margin-bottom: 8px;">
-                <table width="100%">
-                    <tr>
-                        <td style="padding:0;"><h3>${escapeHtml(edu.degree)}</h3></td>
-                        <td style="padding:0; text-align: right;" class="text-small bold">${escapeHtml(edu.dates)}</td>
-                    </tr>
-                </table>
+                <table width="100%"><tr><td><h3>${escapeHtml(edu.degree)}</h3></td><td style="text-align:right;">${escapeHtml(edu.dates)}</td></tr></table>
                 <p class="italic text-small">${escapeHtml(edu.institution)} - ${escapeHtml(edu.location)}</p>
             </div>
         `).join('')}
-
-        <h2>Skills</h2>
-        <p>${cv.skills.map(s => escapeHtml(s)).join(' • ')}</p>
+        ${renderOptionalSections(cv)}
+        <h2>Skills</h2><p>${cv.skills.join(' • ')}</p>
     `;
-
     return createDocShell(cv.name, body, styles);
 };
 
 const generateClassic = (cv: TailoredCV) => {
-    const styles = `
-        body { font-family: "Times New Roman", serif; }
-        h1 { font-size: 26pt; letter-spacing: 2px; text-transform: uppercase; text-align: center; margin-bottom: 5px; }
-        h2 { border-bottom: 1px solid #000; text-transform: uppercase; letter-spacing: 1px; font-size: 12pt; margin-top: 20px; color: #000; }
-        .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; text-align: center; }
-    `;
-
+    const styles = `body { font-family: "Times New Roman", serif; } h1 { text-align: center; text-transform: uppercase; } h2 { border-bottom: 1px solid #000; text-transform: uppercase; }`;
     const body = `
-        <div class="header">
+        <div style="text-align: center; border-bottom: 2px solid #000; margin-bottom: 20px;">
             <h1>${escapeHtml(cv.name)}</h1>
-            <p style="margin-top: 5px; font-size: 10pt;">
-                ${escapeHtml(cv.contact.email)}
-                ${cv.contact.phone ? ` | ${escapeHtml(cv.contact.phone)}` : ''}
-                ${cv.contact.linkedin ? ` | ${escapeHtml(cv.contact.linkedin)}` : ''}
-            </p>
+            <p>${escapeHtml(cv.contact.email)}${cv.contact.phone ? ` | ${escapeHtml(cv.contact.phone)}` : ''}</p>
         </div>
-
-        <h2>Summary</h2>
-        <p>${escapeHtml(cv.summary)}</p>
-
+        <h2>Summary</h2><p>${escapeHtml(cv.summary)}</p>
         <h2>Experience</h2>
         ${cv.experience.map(exp => `
             <div style="margin-bottom: 12px;">
-                <table width="100%">
-                    <tr>
-                        <td style="padding:0;"><h3>${escapeHtml(exp.jobTitle)}</h3></td>
-                        <td style="padding:0; text-align: right;">${escapeHtml(exp.dates)}</td>
-                    </tr>
-                </table>
-                <p class="italic" style="margin-bottom: 2px;">${escapeHtml(exp.company)}, ${escapeHtml(exp.location)}</p>
-                <ul>
-                    ${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
-                </ul>
+                <table width="100%"><tr><td><h3>${escapeHtml(exp.jobTitle)}</h3></td><td style="text-align:right;">${escapeHtml(exp.dates)}</td></tr></table>
+                <p class="italic">${escapeHtml(exp.company)}, ${escapeHtml(exp.location)}</p>
+                <ul>${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>
             </div>
         `).join('')}
-
         <h2>Education</h2>
         ${cv.education.map(edu => `
             <div style="margin-bottom: 8px;">
-                <table width="100%">
-                    <tr>
-                        <td style="padding:0;"><h3>${escapeHtml(edu.degree)}</h3></td>
-                        <td style="padding:0; text-align: right;">${escapeHtml(edu.dates)}</td>
-                    </tr>
-                </table>
+                <table width="100%"><tr><td><h3>${escapeHtml(edu.degree)}</h3></td><td style="text-align:right;">${escapeHtml(edu.dates)}</td></tr></table>
                 <p class="italic">${escapeHtml(edu.institution)}, ${escapeHtml(edu.location)}</p>
             </div>
         `).join('')}
-        
-        <h2>Skills</h2>
-        <p>${cv.skills.map(s => escapeHtml(s)).join(' | ')}</p>
+        ${renderOptionalSections(cv)}
+        <h2>Skills</h2><p>${cv.skills.join(' | ')}</p>
     `;
-
     return createDocShell(cv.name, body, styles);
 };
 
 const generateCreative = (cv: TailoredCV) => {
-    // Word requires explicit backgrounds on TD for table cells
-    const styles = `
-        h1 { color: #ffffff; font-size: 26pt; margin-bottom: 20px; }
-        .sidebar-h2 { color: #7c3aed; font-size: 11pt; text-transform: uppercase; font-weight: bold; margin-bottom: 10px; margin-top: 20px; }
-        .main-h2 { color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px; font-size: 14pt; text-transform: uppercase; margin-top: 20px; }
-        .sidebar-text { color: #e5e7eb; font-size: 9pt; }
-    `;
-
     const body = `
-        <table width="100%" style="width: 100%; border-collapse: collapse;">
+        <table width="100%">
             <tr>
-                <!-- SIDEBAR: Using explicit bgcolor for Word -->
-                <td width="30%" bgcolor="#1f2937" style="background-color: #1f2937; padding: 20px; vertical-align: top;">
-                    <h1>${escapeHtml(cv.name)}</h1>
-                    
-                    <div class="sidebar-h2">Contact</div>
-                    <div class="sidebar-text">
-                        <p>${escapeHtml(cv.contact.email)}</p>
-                        ${cv.contact.phone ? `<p>${escapeHtml(cv.contact.phone)}</p>` : ''}
-                        ${cv.contact.linkedin ? `<p><a href="${cv.contact.linkedin}" style="color: #a78bfa;">LinkedIn</a></p>` : ''}
-                    </div>
-
-                    <div class="sidebar-h2">Education</div>
-                    ${cv.education.map(edu => `
-                        <div style="margin-bottom: 15px;">
-                            <p style="color: #fff; font-weight: bold; margin-bottom: 0; font-size: 10pt;">${escapeHtml(edu.degree)}</p>
-                            <p style="color: #d1d5db; font-size: 9pt; margin-bottom: 0;">${escapeHtml(edu.institution)}</p>
-                            <p style="color: #9ca3af; font-size: 9pt;">${escapeHtml(edu.dates)}</p>
-                        </div>
-                    `).join('')}
-
-                    <div class="sidebar-h2">Skills</div>
-                    <div style="line-height: 1.8;">
-                         ${cv.skills.map(s => `<span style="color: #fff; font-size: 9pt;">• ${escapeHtml(s)}</span><br/>`).join('')}
-                    </div>
+                <td width="30%" bgcolor="#1f2937" style="background-color: #1f2937; color: #fff; padding: 20px;">
+                    <h1 style="color: #fff;">${escapeHtml(cv.name)}</h1>
+                    <p style="color: #a78bfa; font-weight: bold; margin-top: 20px;">CONTACT</p>
+                    <p class="text-small" style="color: #fff;">${escapeHtml(cv.contact.email)}</p>
+                    <p style="color: #a78bfa; font-weight: bold; margin-top: 20px;">EDUCATION</p>
+                    ${cv.education.map(edu => `<p style="color: #fff; font-size: 10pt;">${escapeHtml(edu.degree)}<br/><span style="color: #ccc;">${escapeHtml(edu.institution)}</span></p>`).join('')}
+                    <p style="color: #a78bfa; font-weight: bold; margin-top: 20px;">SKILLS</p>
+                    <p style="color: #fff; font-size: 10pt;">${cv.skills.join('<br/>')}</p>
                 </td>
-
-                <!-- MAIN CONTENT -->
-                <td width="70%" style="padding: 20px; vertical-align: top; background-color: #ffffff;">
-                    <h2 class="main-h2" style="margin-top: 0;">Summary</h2>
-                    <p>${escapeHtml(cv.summary)}</p>
-
-                    <h2 class="main-h2">Experience</h2>
+                <td width="70%" style="padding: 20px;">
+                    <h2 style="border-bottom: 2px solid #eee;">Summary</h2><p>${escapeHtml(cv.summary)}</p>
+                    <h2 style="border-bottom: 2px solid #eee;">Experience</h2>
                     ${cv.experience.map(exp => `
-                        <div style="margin-bottom: 15px;">
-                             <table width="100%">
-                                <tr>
-                                    <td style="padding:0;"><h3>${escapeHtml(exp.jobTitle)}</h3></td>
-                                    <td style="padding:0; text-align: right; color: #6b7280; font-size: 10pt;">${escapeHtml(exp.dates)}</td>
-                                </tr>
-                            </table>
-                            <p class="italic text-small">${escapeHtml(exp.company)} - ${escapeHtml(exp.location)}</p>
-                            <ul>
-                                ${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
-                            </ul>
-                        </div>
+                        <h3>${escapeHtml(exp.jobTitle)}</h3>
+                        <p class="italic text-small">${escapeHtml(exp.company)} - ${escapeHtml(exp.dates)}</p>
+                        <ul>${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>
                     `).join('')}
-                    
-                    ${cv.certifications && cv.certifications.length > 0 ? `
-                        <h2 class="main-h2">Certifications</h2>
-                        ${cv.certifications.map(c => `<p><strong>${escapeHtml(c.name)}</strong> - ${escapeHtml(c.issuer)}</p>`).join('')}
-                    ` : ''}
+                    ${renderOptionalSections(cv)}
                 </td>
             </tr>
         </table>
     `;
-
-    return createDocShell(cv.name, body, styles);
+    return createDocShell(cv.name, body);
 };
 
 const generateMinimalist = (cv: TailoredCV) => {
-    const styles = `
-        body { font-family: Helvetica, Arial, sans-serif; font-weight: 300; }
-        h1 { font-weight: 300; letter-spacing: 3px; font-size: 24pt; margin-bottom: 5px; }
-        h2 { font-size: 10pt; text-transform: uppercase; letter-spacing: 2px; color: #6b7280; font-weight: bold; margin-bottom: 10px; border-bottom: none; }
-        .divider { border-top: 1px solid #e5e7eb; margin: 15px 0; }
-        .job-title { font-weight: bold; font-size: 11pt; }
-    `;
-
+    const styles = `h1 { font-weight: 300; letter-spacing: 2px; } h2 { font-size: 10pt; text-transform: uppercase; color: #999; border-bottom: 1px solid #eee; }`;
     const body = `
-        <h1 style="text-align: left;">${escapeHtml(cv.name)}</h1>
-        <p class="text-small" style="color: #6b7280;">
-             ${escapeHtml(cv.contact.email)}
-             ${cv.contact.phone ? ` / ${escapeHtml(cv.contact.phone)}` : ''}
-             ${cv.contact.linkedin ? ` / <a href="${cv.contact.linkedin}">LinkedIn</a>` : ''}
-        </p>
-        
-        <div style="margin-top: 20px;">
-             <p>${escapeHtml(cv.summary)}</p>
-        </div>
-
-        <div class="divider"></div>
-
+        <h1>${escapeHtml(cv.name)}</h1>
+        <p class="text-small">${escapeHtml(cv.contact.email)} / ${escapeHtml(cv.contact.phone)}</p>
+        <p style="margin-top: 20px;">${escapeHtml(cv.summary)}</p>
         <h2>Experience</h2>
         ${cv.experience.map(exp => `
-            <div style="margin-bottom: 15px;">
-                <table width="100%">
-                    <tr>
-                        <td style="padding:0;"><span class="job-title">${escapeHtml(exp.jobTitle)}</span> <span style="color: #6b7280;">at ${escapeHtml(exp.company)}</span></td>
-                        <td style="padding:0; text-align: right;" class="text-small">${escapeHtml(exp.dates)}</td>
-                    </tr>
-                </table>
-                <p class="text-small" style="margin-bottom: 4px;">${escapeHtml(exp.location)}</p>
-                <ul style="color: #4b5563;">
-                    ${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
-                </ul>
-            </div>
+            <h3>${escapeHtml(exp.jobTitle)} at ${escapeHtml(exp.company)}</h3>
+            <p class="text-small">${escapeHtml(exp.dates)}</p>
+            <ul>${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>
         `).join('')}
-
-        <div class="divider"></div>
-
-        <table width="100%">
-            <tr>
-                <td width="50%" valign="top">
-                    <h2>Education</h2>
-                    ${cv.education.map(edu => `
-                        <div style="margin-bottom: 10px;">
-                            <p class="bold" style="margin-bottom: 2px;">${escapeHtml(edu.degree)}</p>
-                            <p class="text-small" style="margin-bottom: 0;">${escapeHtml(edu.institution)}</p>
-                            <p class="text-small" style="color: #9ca3af;">${escapeHtml(edu.dates)}</p>
-                        </div>
-                    `).join('')}
-                </td>
-                <td width="50%" valign="top">
-                    <h2>Skills</h2>
-                    <p style="color: #4b5563;">${cv.skills.join(', ')}</p>
-                </td>
-            </tr>
-        </table>
+        <h2>Education</h2>
+        ${cv.education.map(edu => `<p><strong>${escapeHtml(edu.degree)}</strong> - ${escapeHtml(edu.institution)} (${escapeHtml(edu.dates)})</p>`).join('')}
+        ${renderOptionalSections(cv)}
+        <h2>Skills</h2><p>${cv.skills.join(', ')}</p>
     `;
-
     return createDocShell(cv.name, body, styles);
 };
 
 const generateCorporate = (cv: TailoredCV) => {
-    const styles = `
-        h1 { color: #ffffff; margin: 0; font-size: 28pt; }
-        .section-title { font-size: 10pt; color: #4f46e5; font-weight: bold; text-transform: uppercase; margin-bottom: 10px; }
-        .main-title { font-size: 14pt; color: #111827; font-weight: bold; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-bottom: 10px; margin-top: 0; }
-    `;
-
     const body = `
-        <!-- Header with BG color -->
-        <table width="100%">
+        <table width="100%"><tr bgcolor="#1f2937" style="background-color:#1f2937; color:#fff;"><td style="padding:20px;"><h1>${escapeHtml(cv.name)}</h1></td></tr></table>
+        <table width="100%" style="margin-top:20px;">
             <tr>
-                <td bgcolor="#1f2937" style="background-color: #1f2937; padding: 30px; color: #ffffff;">
-                    <h1>${escapeHtml(cv.name)}</h1>
-                    <p style="color: #d1d5db; margin-top: 5px; font-size: 11pt;">Professional Resume</p>
+                <td width="30%" style="border-right: 1px solid #eee; padding-right: 20px;">
+                    <h2 style="color: #4f46e5; font-size: 10pt;">CONTACT</h2><p>${escapeHtml(cv.contact.email)}</p>
+                    <h2 style="color: #4f46e5; font-size: 10pt;">EDUCATION</h2>${cv.education.map(edu => `<p>${escapeHtml(edu.degree)}<br/>${escapeHtml(edu.institution)}</p>`).join('')}
+                    <h2 style="color: #4f46e5; font-size: 10pt;">SKILLS</h2><ul>${cv.skills.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ul>
                 </td>
-            </tr>
-        </table>
-
-        <table width="100%" style="margin-top: 20px;">
-            <tr>
-                <!-- LEFT COLUMN -->
-                <td width="30%" valign="top" style="padding-right: 20px; border-right: 1px solid #e5e7eb;">
-                    <div class="section-title">Contact</div>
-                    <p class="text-small">${escapeHtml(cv.contact.email)}</p>
-                    ${cv.contact.phone ? `<p class="text-small">${escapeHtml(cv.contact.phone)}</p>` : ''}
-                    
-                    <div style="height: 20px;"></div>
-
-                    <div class="section-title">Education</div>
-                    ${cv.education.map(edu => `
-                        <div style="margin-bottom: 10px;">
-                            <p class="bold" style="font-size: 10pt; margin-bottom: 0;">${escapeHtml(edu.degree)}</p>
-                            <p class="text-small" style="margin-bottom: 0;">${escapeHtml(edu.institution)}</p>
-                            <p class="text-small" style="color: #9ca3af;">${escapeHtml(edu.dates)}</p>
-                        </div>
-                    `).join('')}
-
-                    <div style="height: 20px;"></div>
-
-                    <div class="section-title">Skills</div>
-                    <ul style="margin-left: 15px; font-size: 10pt;">
-                        ${cv.skills.map(s => `<li>${escapeHtml(s)}</li>`).join('')}
-                    </ul>
-                </td>
-                
-                <!-- RIGHT COLUMN -->
-                <td width="70%" valign="top" style="padding-left: 20px;">
-                    <h2 class="main-title">Professional Summary</h2>
-                    <p>${escapeHtml(cv.summary)}</p>
-                    
-                    <div style="height: 20px;"></div>
-
-                    <h2 class="main-title">Work Experience</h2>
-                    ${cv.experience.map(exp => `
-                        <div style="margin-bottom: 15px;">
-                            <table width="100%">
-                                <tr>
-                                    <td style="padding:0;"><h3>${escapeHtml(exp.jobTitle)}</h3></td>
-                                    <td style="padding:0; text-align: right; font-size: 10pt; color: #6b7280;">${escapeHtml(exp.dates)}</td>
-                                </tr>
-                            </table>
-                            <p class="italic text-small" style="margin-bottom: 5px;">${escapeHtml(exp.company)} - ${escapeHtml(exp.location)}</p>
-                            <ul>
-                                ${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
-                            </ul>
-                        </div>
-                    `).join('')}
+                <td width="70%" style="padding-left: 20px;">
+                    <h2 style="border-bottom: 1px solid #eee;">Summary</h2><p>${escapeHtml(cv.summary)}</p>
+                    <h2 style="border-bottom: 1px solid #eee;">Experience</h2>
+                    ${cv.experience.map(exp => `<h3>${escapeHtml(exp.jobTitle)}</h3><p class="italic">${escapeHtml(exp.company)} | ${escapeHtml(exp.dates)}</p><ul>${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>`).join('')}
+                    ${renderOptionalSections(cv)}
                 </td>
             </tr>
         </table>
     `;
-
-    return createDocShell(cv.name, body, styles);
+    return createDocShell(cv.name, body);
 };
 
 const generateElegant = (cv: TailoredCV) => {
-    const styles = `
-        body { font-family: Georgia, serif; color: #374151; }
-        h1 { font-family: "Garamond", "Times New Roman", serif; font-size: 28pt; text-align: center; color: #111827; margin-bottom: 5px; }
-        h2 { text-align: center; font-size: 12pt; letter-spacing: 2px; border-bottom: none; text-transform: uppercase; margin-top: 30px; margin-bottom: 15px; }
-        .center-text { text-align: center; }
-        .separator { border-top: 1px solid #d1d5db; width: 100px; margin: 20px auto; }
-        .exp-date { text-align: right; color: #6b7280; font-style: italic; font-size: 10pt; }
-        .exp-content { border-left: 1px solid #e5e7eb; padding-left: 15px; }
-    `;
-
+    const styles = `body { font-family: Georgia, serif; } h1 { text-align: center; } h2 { text-align: center; border: none; letter-spacing: 2px; }`;
     const body = `
-        <h1>${escapeHtml(cv.name)}</h1>
-        <p class="center-text text-small" style="letter-spacing: 1px;">
-            ${escapeHtml(cv.contact.email)}
-            ${cv.contact.phone ? ` • ${escapeHtml(cv.contact.phone)}` : ''}
-        </p>
-
-        <div class="separator"></div>
-        <p class="center-text" style="font-style: italic; margin: 0 auto;">${escapeHtml(cv.summary)}</p>
-        <div class="separator"></div>
-
-        <h2>Experience</h2>
-        ${cv.experience.map(exp => `
-            <table width="100%" style="margin-bottom: 15px;">
-                <tr>
-                    <td width="20%" class="exp-date">
-                        ${escapeHtml(exp.dates)}<br/>
-                        ${escapeHtml(exp.location)}
-                    </td>
-                    <td width="80%" class="exp-content">
-                        <h3 style="font-family: Arial, sans-serif;">${escapeHtml(exp.jobTitle)}</h3>
-                        <p class="italic text-small">${escapeHtml(exp.company)}</p>
-                        <ul style="margin-top: 5px;">
-                            ${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
-                        </ul>
-                    </td>
-                </tr>
-            </table>
-        `).join('')}
-
-        <h2>Education & Skills</h2>
-        <table width="100%">
-            <tr>
-                <td width="50%" valign="top">
-                     ${cv.education.map(edu => `
-                        <div style="margin-bottom: 10px;">
-                            <p class="bold" style="margin-bottom: 0;">${escapeHtml(edu.degree)}</p>
-                            <p class="italic text-small" style="margin-bottom: 0;">${escapeHtml(edu.institution)}</p>
-                            <p class="text-small">${escapeHtml(edu.dates)}</p>
-                        </div>
-                    `).join('')}
-                </td>
-                <td width="50%" valign="top" style="text-align: right;">
-                    <p>${cv.skills.join(' • ')}</p>
-                </td>
-            </tr>
-        </table>
+        <h1>${escapeHtml(cv.name)}</h1><p style="text-align:center;">${escapeHtml(cv.contact.email)}</p>
+        <div style="border-top:1px solid #eee; width:100px; margin:20px auto;"></div>
+        <p style="font-style:italic; text-align:center;">${escapeHtml(cv.summary)}</p>
+        <h2>EXPERIENCE</h2>
+        ${cv.experience.map(exp => `<h3>${escapeHtml(exp.jobTitle)}</h3><p style="text-align:center;">${escapeHtml(exp.company)} | ${escapeHtml(exp.dates)}</p><ul>${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>`).join('')}
+        ${renderOptionalSections(cv)}
+        <h2>EDUCATION</h2>${cv.education.map(edu => `<p style="text-align:center;">${escapeHtml(edu.degree)} - ${escapeHtml(edu.institution)}</p>`).join('')}
+        <h2>SKILLS</h2><p style="text-align:center;">${cv.skills.join(' • ')}</p>
     `;
-
     return createDocShell(cv.name, body, styles);
 };
 
 const generateTech = (cv: TailoredCV) => {
-    const styles = `
-        body { font-family: "Courier New", Courier, monospace; }
-        h1 { color: #22d3ee; font-size: 24pt; margin-bottom: 5px; }
-        h2 { color: #22d3ee; font-size: 12pt; border-bottom: 1px solid #374151; padding-bottom: 5px; margin-top: 20px; text-transform: uppercase; }
-        .sidebar-title { color: #ffffff; font-size: 11pt; font-weight: bold; margin-bottom: 10px; margin-top: 20px; text-transform: uppercase; }
-        .key { color: #4ade80; }
-        .value { color: #fb923c; }
-    `;
-
+    const styles = `body { font-family: "Courier New", monospace; } h1 { color: #22d3ee; } h2 { color: #22d3ee; border-bottom: 1px solid #333; }`;
     const body = `
-        <table width="100%" style="width: 100%; border-collapse: collapse;">
-            <tr>
-                <!-- SIDEBAR -->
-                <td width="30%" bgcolor="#111827" style="background-color: #111827; padding: 20px; color: #d1d5db; vertical-align: top;">
-                    <h1>${escapeHtml(cv.name)}</h1>
-                    <p style="color: #22d3ee; margin-bottom: 20px;">&gt; ${escapeHtml(cv.experience[0]?.jobTitle || 'Developer')}</p>
-
-                    <div class="sidebar-title">// Contact</div>
-                    <div style="font-size: 9pt;">
-                        <p><span class="key">'email'</span>: <span class="value">"${escapeHtml(cv.contact.email)}"</span></p>
-                        ${cv.contact.phone ? `<p><span class="key">'phone'</span>: <span class="value">"${escapeHtml(cv.contact.phone)}"</span></p>` : ''}
-                    </div>
-
-                    <div class="sidebar-title">// Education</div>
-                    ${cv.education.map(edu => `
-                        <div style="margin-bottom: 15px;">
-                            <p style="color: #f3f4f6; font-weight: bold; margin-bottom: 0;">${escapeHtml(edu.degree)}</p>
-                            <p style="font-size: 9pt; margin-bottom: 0;">${escapeHtml(edu.institution)}</p>
-                            <p style="color: #6b7280; font-size: 9pt;">${escapeHtml(edu.dates)}</p>
-                        </div>
-                    `).join('')}
-
-                    <div class="sidebar-title">// Skills</div>
-                    <p style="font-size: 9pt; color: #22d3ee;">[ ${cv.skills.map(s => `"${escapeHtml(s)}"`).join(', ')} ]</p>
-                </td>
-
-                <!-- MAIN CONTENT -->
-                <td width="70%" style="padding: 20px; background-color: #ffffff; vertical-align: top;">
-                    <h2>README.md</h2>
-                    <p>${escapeHtml(cv.summary)}</p>
-
-                    <h2>Commit History (Experience)</h2>
-                    ${cv.experience.map(exp => `
-                        <div style="margin-bottom: 20px;">
-                            <table width="100%">
-                                <tr>
-                                    <td style="padding:0;"><h3 style="margin:0;">${escapeHtml(exp.jobTitle)}</h3></td>
-                                    <td style="padding:0; text-align: right; font-size: 10pt; color: #6b7280;">${escapeHtml(exp.dates)}</td>
-                                </tr>
-                            </table>
-                            <p style="margin-bottom: 5px; font-style: italic;">${escapeHtml(exp.company)} - ${escapeHtml(exp.location)}</p>
-                            <ul>
-                                ${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
-                            </ul>
-                        </div>
-                    `).join('')}
-                </td>
-            </tr>
+        <table width="100%">
+            <tr bgcolor="#111"><td style="padding:20px;"><h1>${escapeHtml(cv.name)}</h1><p style="color:#22d3ee;">&gt; ${escapeHtml(cv.experience[0]?.jobTitle)}</p></td></tr>
+            <tr><td style="padding:20px;">
+                <h2>README.md</h2><p>${escapeHtml(cv.summary)}</p>
+                <h2>COMMIT HISTORY</h2>
+                ${cv.experience.map(exp => `<h3>${escapeHtml(exp.jobTitle)}</h3><p>${escapeHtml(exp.company)} [${escapeHtml(exp.dates)}]</p><ul>${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>`).join('')}
+                ${renderOptionalSections(cv)}
+                <h2>SYSTEM STATS</h2><p>${cv.skills.join(' | ')}</p>
+            </td></tr>
         </table>
     `;
-
     return createDocShell(cv.name, body, styles);
 };
 
 const generateInfographic = (cv: TailoredCV) => {
-    const styles = `
-        h1 { font-size: 26pt; margin-bottom: 0; }
-        h2 { font-size: 12pt; text-transform: uppercase; font-weight: bold; color: #111827; border-bottom: 2px solid #4f46e5; padding-bottom: 2px; margin-top: 20px; }
-        .sidebar-box { background-color: #f3f4f6; padding: 15px; margin-bottom: 15px; border-radius: 8px; }
-        .sidebar-h3 { font-size: 10pt; font-weight: bold; text-transform: uppercase; margin-bottom: 8px; color: #111827; }
-        .timeline-item { border-left: 2px solid #d1d5db; padding-left: 15px; margin-left: 5px; margin-bottom: 15px; }
-    `;
-
     const body = `
+        <h1>${escapeHtml(cv.name)}</h1><p>${escapeHtml(cv.experience[0]?.jobTitle)}</p>
         <table width="100%">
             <tr>
-                <td style="vertical-align: middle;">
-                    <h1>${escapeHtml(cv.name)}</h1>
-                    <p style="font-size: 14pt; color: #4b5563; margin: 0;">${escapeHtml(cv.experience[0]?.jobTitle || 'Professional')}</p>
+                <td width="66%">
+                    <h2>Summary</h2><p>${escapeHtml(cv.summary)}</p>
+                    <h2>Experience</h2>${cv.experience.map(exp => `<h3>${escapeHtml(exp.jobTitle)}</h3><p>${escapeHtml(exp.company)} [${escapeHtml(exp.dates)}]</p><ul>${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>`).join('')}
+                    ${renderOptionalSections(cv)}
                 </td>
-            </tr>
-        </table>
-
-        <table width="100%" style="margin-top: 20px;">
-            <tr>
-                <!-- MAIN CONTENT (Left) -->
-                <td width="66%" valign="top" style="padding-right: 20px;">
-                    <h2>Summary</h2>
-                    <p>${escapeHtml(cv.summary)}</p>
-
-                    <h2>Experience</h2>
-                    ${cv.experience.map(exp => `
-                        <div class="timeline-item">
-                            <table width="100%">
-                                <tr>
-                                    <td style="padding:0;"><h3 style="margin:0;">${escapeHtml(exp.jobTitle)}</h3></td>
-                                    <td style="padding:0; text-align: right; font-size: 9pt; color: #6b7280; font-weight: bold;">${escapeHtml(exp.dates)}</td>
-                                </tr>
-                            </table>
-                            <p style="font-style: italic; margin-bottom: 5px; font-size: 10pt;">${escapeHtml(exp.company)} - ${escapeHtml(exp.location)}</p>
-                            <ul>
-                                ${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
-                            </ul>
-                        </div>
-                    `).join('')}
-                </td>
-                
-                <!-- SIDEBAR (Right) -->
-                <td width="34%" valign="top">
-                    <div class="sidebar-box">
-                        <div class="sidebar-h3">Contact</div>
-                        <p class="text-small">${escapeHtml(cv.contact.email)}</p>
-                        ${cv.contact.phone ? `<p class="text-small">${escapeHtml(cv.contact.phone)}</p>` : ''}
-                    </div>
-
-                    <div class="sidebar-box">
-                        <div class="sidebar-h3">Education</div>
-                        ${cv.education.map(edu => `
-                            <div style="margin-bottom: 10px;">
-                                <p style="font-weight: bold; font-size: 10pt; margin-bottom: 0;">${escapeHtml(edu.degree)}</p>
-                                <p class="text-small" style="margin-bottom: 0;">${escapeHtml(edu.institution)}</p>
-                                <p class="text-small" style="color: #6b7280;">${escapeHtml(edu.dates)}</p>
-                            </div>
-                        `).join('')}
-                    </div>
-
-                    <div class="sidebar-box">
-                        <div class="sidebar-h3">Skills</div>
-                        ${cv.skills.map(s => `<p class="text-small" style="margin-bottom: 2px;">• ${escapeHtml(s)}</p>`).join('')}
-                    </div>
+                <td width="33%" bgcolor="#f9fafb" style="padding:15px;">
+                    <h3>Contact</h3><p>${escapeHtml(cv.contact.email)}</p>
+                    <h3>Education</h3>${cv.education.map(edu => `<p>${escapeHtml(edu.degree)}</p>`).join('')}
+                    <h3>Skills</h3>${cv.skills.map(s => `<p>• ${escapeHtml(s)}</p>`).join('')}
                 </td>
             </tr>
         </table>
     `;
-
-    return createDocShell(cv.name, body, styles);
+    return createDocShell(cv.name, body);
 };
 
 const generateBold = (cv: TailoredCV) => {
-    const styles = `
-        body { border-left: 10px solid #7c3aed; padding-left: 30px; }
-        h1 { font-size: 32pt; font-weight: 900; letter-spacing: -1px; margin-bottom: 5px; }
-        h2 { font-size: 14pt; font-weight: 900; color: #7c3aed; text-transform: uppercase; margin-top: 30px; margin-bottom: 15px; }
-        .contact-info { color: #4b5563; font-size: 11pt; margin-bottom: 20px; }
-        .job-meta { font-weight: bold; color: #4b5563; margin-bottom: 5px; }
-        .skill-badge { color: #1f2937; font-weight: bold; font-size: 10pt; text-transform: uppercase; }
-    `;
-
+    const styles = `body { border-left: 10px solid #7c3aed; padding-left: 20px; } h1 { font-size: 32pt; } h2 { color: #7c3aed; }`;
     const body = `
-        <h1>${escapeHtml(cv.name)}</h1>
-        <div class="contact-info">
-            ${escapeHtml(cv.contact.email)}
-            ${cv.contact.phone ? ` • ${escapeHtml(cv.contact.phone)}` : ''}
-        </div>
-
-        <h2>Summary</h2>
-        <p>${escapeHtml(cv.summary)}</p>
-
-        <h2>Experience</h2>
-        ${cv.experience.map(exp => `
-            <div style="margin-bottom: 15px;">
-                <table width="100%">
-                    <tr>
-                        <td style="padding:0;"><h3>${escapeHtml(exp.jobTitle)}</h3></td>
-                        <td style="padding:0; text-align: right; font-weight: bold; color: #6b7280;">${escapeHtml(exp.dates)}</td>
-                    </tr>
-                </table>
-                <div class="job-meta">${escapeHtml(exp.company)} / <span style="font-weight: normal; font-style: italic;">${escapeHtml(exp.location)}</span></div>
-                <ul>
-                    ${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
-                </ul>
-            </div>
-        `).join('')}
-
-        <table width="100%" style="margin-top: 20px;">
-            <tr>
-                <td width="50%" valign="top">
-                    <h2>Education</h2>
-                    ${cv.education.map(edu => `
-                        <div style="margin-bottom: 10px;">
-                            <h3 style="font-size: 11pt; margin: 0;">${escapeHtml(edu.degree)}</h3>
-                            <p style="color: #4b5563; margin: 0;">${escapeHtml(edu.institution)} / ${escapeHtml(edu.dates)}</p>
-                        </div>
-                    `).join('')}
-                </td>
-                <td width="50%" valign="top">
-                    <h2>Skills</h2>
-                    <p>
-                        ${cv.skills.map(s => `<span class="skill-badge">${escapeHtml(s)}</span>`).join(' • ')}
-                    </p>
-                </td>
-            </tr>
-        </table>
+        <h1>${escapeHtml(cv.name)}</h1><p>${escapeHtml(cv.contact.email)}</p>
+        <h2>SUMMARY</h2><p>${escapeHtml(cv.summary)}</p>
+        <h2>EXPERIENCE</h2>${cv.experience.map(exp => `<h3>${escapeHtml(exp.jobTitle)}</h3><p>${escapeHtml(exp.company)} | ${escapeHtml(exp.dates)}</p><ul>${exp.responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>`).join('')}
+        ${renderOptionalSections(cv)}
+        <h2>EDUCATION</h2>${cv.education.map(edu => `<p>${escapeHtml(edu.degree)}</p>`).join('')}
+        <h2>SKILLS</h2><p>${cv.skills.join(' • ')}</p>
     `;
-
     return createDocShell(cv.name, body, styles);
 };
 
@@ -656,7 +311,6 @@ export const getUniversalDocHtml = (cvData: TailoredCV, template: CvTemplate): s
 export const getInterviewPrepAsHtml = (title: string, data: { question: string; answer:string; }[]): string => {
     let html = `<div style="font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.4; color: #333;">`;
     html += `<h1 style="font-size: 18pt; color: #000; border-bottom: 2px solid #ddd; padding-bottom: 5px;">${escapeHtml(title)}</h1>`;
-
     data.forEach(item => {
         html += `<div style="margin-top: 20px; page-break-inside: avoid;">`;
         html += `<h2 style="font-size: 13pt; color: #4f46e5; margin-bottom: 8px;">${escapeHtml(item.question)}</h2>`;
@@ -664,69 +318,26 @@ export const getInterviewPrepAsHtml = (title: string, data: { question: string; 
         html += `<p style="font-size: 11pt; color: #333;">${formattedAnswer}</p>`;
         html += `</div>`;
     });
-
     html += `</div>`;
     return html;
 };
 
 export const cvToPlainText = (cv: TailoredCV): string => {
     if (!cv) return "No CV data available.";
-    
-    let text = `TAILORED CV\n====================\n\n`;
-    text += `${cv.name}\n`;
-    text += `${cv.contact.email}`;
+    let text = `TAILORED CV\n====================\n\n${cv.name}\n${cv.contact.email}`;
     if (cv.contact.phone) text += ` | ${cv.contact.phone}`;
-    if (cv.contact.linkedin) text += ` | ${cv.contact.linkedin}`;
     text += `\n\n--- SUMMARY ---\n${cv.summary}\n`;
-
     if (cv.experience?.length > 0) {
         text += `\n--- EXPERIENCE ---\n`;
         cv.experience.forEach(exp => {
-        text += `\n${exp.jobTitle} | ${exp.company}, ${exp.location} (${exp.dates})\n`;
-        exp.responsibilities.forEach(resp => {
-            text += `  - ${resp}\n`;
-        });
+            text += `\n${exp.jobTitle} | ${exp.company} (${exp.dates})\n`;
+            exp.responsibilities.forEach(resp => { text += `  - ${resp}\n`; });
         });
     }
-
     if (cv.education?.length > 0) {
         text += `\n--- EDUCATION ---\n`;
-        cv.education.forEach(edu => {
-        text += `\n${edu.degree} | ${edu.institution}, ${edu.location} (${edu.dates})\n`;
-        });
+        cv.education.forEach(edu => { text += `${edu.degree} | ${edu.institution} (${edu.dates})\n`; });
     }
-    
-    if (cv.professionalDevelopment?.length > 0) {
-        text += `\n--- PROFESSIONAL DEVELOPMENT ---\n`;
-        cv.professionalDevelopment.forEach(pd => {
-            text += `${pd.name}${pd.institution ? ` (${pd.institution})` : ''}${pd.date ? ` - ${pd.date}` : ''}\n`;
-        });
-    }
-    
-    if (cv.certifications?.length > 0) {
-        text += `\n--- CERTIFICATIONS ---\n`;
-        cv.certifications.forEach(cert => {
-            text += `${cert.name}${cert.issuer ? ` (${cert.issuer})` : ''}${cert.date ? ` - ${cert.date}` : ''}\n`;
-        });
-    }
-
-    if (cv.publications?.length > 0) {
-        text += `\n--- PUBLICATIONS ---\n`;
-        cv.publications.forEach(pub => {
-            text += `"${pub.title}"${pub.journal ? ` - ${pub.journal}` : ''}${pub.date ? ` (${pub.date})` : ''}\n`;
-        });
-    }
-
-    if (cv.awards?.length > 0) {
-        text += `\n--- AWARDS ---\n`;
-        cv.awards.forEach(award => {
-            text += `${award.name}${award.issuer ? ` (${award.issuer})` : ''}${award.date ? ` - ${award.date}` : ''}\n`;
-        });
-    }
-    
-    if (cv.skills?.length > 0) {
-        text += `\n--- SKILLS ---\n${cv.skills.join(', ')}\n`;
-    }
-    
+    if (cv.skills?.length > 0) text += `\n--- SKILLS ---\n${cv.skills.join(', ')}\n`;
     return text;
 };
