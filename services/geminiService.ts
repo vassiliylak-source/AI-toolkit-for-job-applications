@@ -1,255 +1,166 @@
-// Fix: Implemented Gemini service for CV tailoring and analysis.
+
 import { GoogleGenAI, Type } from "@google/genai";
-import type { GenerationResult, CVFile, TailoredCV } from "../types";
+import type { GenerationResult, CVFile, TailoredCV, ApplicationStrategy, ATSAnalysis } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+// Schemas
+const strategySchema = {
+    type: Type.OBJECT,
+    properties: {
+        suggestedTone: { type: Type.STRING },
+        keyAchievementsToHighlight: { type: Type.ARRAY, items: { type: Type.STRING } },
+        perceivedGaps: { type: Type.ARRAY, items: { type: Type.STRING } },
+        narrativeAngle: { type: Type.STRING },
+        priorityKeywords: { type: Type.ARRAY, items: { type: Type.STRING } }
+    },
+    required: ['suggestedTone', 'keyAchievementsToHighlight', 'perceivedGaps', 'narrativeAngle', 'priorityKeywords']
+};
+
+const atsAnalysisSchema = {
+    type: Type.OBJECT,
+    properties: {
+        overallMatchScore: { type: Type.NUMBER },
+        foundHardSkills: { 
+            type: Type.ARRAY, 
+            items: { 
+                type: Type.OBJECT, 
+                properties: { skill: { type: Type.STRING }, found: { type: Type.BOOLEAN } },
+                required: ['skill', 'found']
+            }
+        },
+        foundSoftSkills: { 
+            type: Type.ARRAY, 
+            items: { 
+                type: Type.OBJECT, 
+                properties: { skill: { type: Type.STRING }, found: { type: Type.BOOLEAN } },
+                required: ['skill', 'found']
+            }
+        },
+        missingKeywords: { type: Type.ARRAY, items: { type: Type.STRING } },
+        formattingRisk: { type: Type.STRING, enum: ['Low', 'Medium', 'High'] }
+    },
+    required: ['overallMatchScore', 'foundHardSkills', 'foundSoftSkills', 'missingKeywords', 'formattingRisk']
+};
 
 const tailoredCvSchema = {
     type: Type.OBJECT,
     properties: {
-        name: { type: Type.STRING, description: "Full name of the candidate." },
+        name: { type: Type.STRING },
         contact: {
             type: Type.OBJECT,
-            properties: {
-                email: { type: Type.STRING, description: "Email address." },
-                phone: { type: Type.STRING, description: "Phone number." },
-                linkedin: { type: Type.STRING, description: "LinkedIn profile URL." },
-            },
-            required: ['email'],
+            properties: { email: { type: Type.STRING }, phone: { type: Type.STRING }, linkedin: { type: Type.STRING } },
+            required: ['email']
         },
-        summary: { type: Type.STRING, description: "A 2-3 sentence professional summary tailored to the job." },
+        summary: { type: Type.STRING },
         experience: {
             type: Type.ARRAY,
-            description: "Work experience, tailored to highlight relevant skills for the job.",
             items: {
                 type: Type.OBJECT,
                 properties: {
                     jobTitle: { type: Type.STRING },
                     company: { type: Type.STRING },
                     location: { type: Type.STRING },
-                    dates: { type: Type.STRING, description: "e.g., 'Jan 2020 - Present'" },
-                    responsibilities: {
-                        type: Type.ARRAY,
-                        description: "Bullet points describing responsibilities and achievements, tailored to the job description.",
-                        items: { type: Type.STRING }
-                    },
+                    dates: { type: Type.STRING },
+                    responsibilities: { type: Type.ARRAY, items: { type: Type.STRING } }
                 },
-                required: ['jobTitle', 'company', 'dates', 'responsibilities'],
-            },
+                required: ['jobTitle', 'company', 'dates', 'responsibilities']
+            }
         },
         education: {
             type: Type.ARRAY,
-            description: "Educational background.",
             items: {
                 type: Type.OBJECT,
-                properties: {
-                    degree: { type: Type.STRING },
-                    institution: { type: Type.STRING },
-                    location: { type: Type.STRING },
-                    dates: { type: Type.STRING, description: "e.g., 'Sep 2016 - May 2020'" },
-                },
-                required: ['degree', 'institution', 'dates'],
-            },
-        },
-        skills: {
-            type: Type.ARRAY,
-            description: "List of relevant skills for the job.",
-            items: { type: Type.STRING },
-        },
-        certifications: {
-            type: Type.ARRAY,
-            description: "List of certifications, if any.",
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    name: { type: Type.STRING },
-                    issuer: { type: Type.STRING },
-                    date: { type: Type.STRING },
-                },
-                required: ['name'],
-            },
-        },
-        awards: {
-            type: Type.ARRAY,
-            description: "List of awards or honors, if any.",
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    name: { type: Type.STRING },
-                    issuer: { type: Type.STRING },
-                    date: { type: Type.STRING },
-                },
-                required: ['name'],
-            },
-        },
-        publications: {
-            type: Type.ARRAY,
-            description: "List of publications, if any.",
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    title: { type: Type.STRING },
-                    journal: { type: Type.STRING, description: "The journal, conference, or platform where it was published." },
-                    date: { type: Type.STRING },
-                },
-                required: ['title'],
-            },
-        },
-        professionalDevelopment: {
-            type: Type.ARRAY,
-            description: "List of relevant courses, trainings, or professional development activities, if any.",
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    name: { type: Type.STRING, description: "Name of the course or training." },
-                    institution: { type: Type.STRING, description: "The institution or platform that provided it." },
-                    date: { type: Type.STRING },
-                },
-                required: ['name'],
-            },
-        },
-    },
-    required: ['name', 'contact', 'summary', 'experience', 'education', 'skills'],
-};
-
-
-const responseSchema = {
-    type: Type.OBJECT,
-    properties: {
-        tailoredCv: tailoredCvSchema,
-        jdKeySkills: {
-            type: Type.ARRAY,
-            description: "A comprehensive list of the most important technical and soft skills, tools, and qualifications extracted directly from the job description. These represent what the employer is explicitly looking for.",
-            items: { type: Type.STRING }
-        },
-        analysis: { 
-            type: Type.STRING, 
-            description: "A detailed, engaging analysis of the candidate's fit, formatted as a semantic HTML string. Use emojis and clear headings (<h2>), bold text (<strong>), and lists (<ul><li>) to make it readable. The output must be a single, valid HTML string. **Crucially, do not include any inline CSS or color styling**; the client application will handle all styling for light and dark modes."
-        },
-        coverLetters: { 
-            type: Type.OBJECT,
-            description: "Three distinct versions of a professional cover letter.",
-            properties: {
-                versionA: { type: Type.STRING, description: "A professional cover letter, Version A, with a direct, confident, and achievement-focused tone." },
-                versionB: { type: Type.STRING, description: "A professional cover letter, Version B, with a more personable, storytelling tone that connects with company culture." },
-                versionExtended: { type: Type.STRING, description: "An extended version of the cover letter that provides more detailed narratives and in-depth explanations of the candidate's skills and experiences, suitable for roles that require comprehensive applications." }
-            },
-            required: ['versionA', 'versionB', 'versionExtended']
-        },
-        interviewPrep: {
-            type: Type.ARRAY,
-            description: "An array of likely interview questions and expert-crafted answers.",
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    question: { type: Type.STRING, description: "A likely interview question." },
-                    answer: { type: Type.STRING, description: "A detailed, structured sample answer using the STAR method where applicable." }
-                },
-                required: ['question', 'answer']
+                properties: { degree: { type: Type.STRING }, institution: { type: Type.STRING }, location: { type: Type.STRING }, dates: { type: Type.STRING } },
+                required: ['degree', 'institution', 'dates']
             }
-        }
+        },
+        skills: { type: Type.ARRAY, items: { type: Type.STRING } },
+        certifications: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, issuer: { type: Type.STRING }, date: { type: Type.STRING } }, required: ['name'] } },
+        awards: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, issuer: { type: Type.STRING }, date: { type: Type.STRING } }, required: ['name'] } },
+        publications: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, journal: { type: Type.STRING }, date: { type: Type.STRING } }, required: ['title'] } },
+        professionalDevelopment: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, institution: { type: Type.STRING }, date: { type: Type.STRING } }, required: ['name'] } }
     },
-    required: ['tailoredCv', 'jdKeySkills', 'analysis', 'coverLetters', 'interviewPrep'],
+    required: ['name', 'contact', 'summary', 'experience', 'education', 'skills']
 };
 
-export const generateCvAndCoverLetter = async (
-  cv: string | CVFile,
-  jobDescription: string,
-  template: string
-): Promise<GenerationResult> => {
+// --- STAGE 1: Generate Application Strategy ---
+export const generateApplicationStrategy = async (cv: string | CVFile, jobDescription: string): Promise<ApplicationStrategy> => {
+    let parts: any[] = [];
+    if (typeof cv === 'string') {
+        parts.push({ text: `Original CV: ${cv}` });
+    } else {
+        parts.push({ inlineData: { mimeType: cv.mimeType, data: cv.data } });
+    }
+    parts.push({ text: `Target Job Description: ${jobDescription}` });
+    parts.push({ text: `Act as an expert recruiter. Analyze the CV and JD. Provide a high-level application strategy. Identify tone, key achievements to focus on, perceived gaps in the candidate's profile, and a narrative angle to overcome those gaps.` });
 
-  let contents: any;
-  const commonPromptInfo = `
-    Act as a world-class executive career coach and resume writer with over 20 years of experience helping professionals land their dream jobs. Your task is to take a candidate's CV and a target job description and create a powerful, tailored application package. Even if the original CV is not a strong match, your goal is to strategically reposition the candidate to make them appear as the ideal fit.
+    const response = await ai.models.generateContent({
+        model: "gemini-3-pro-preview",
+        contents: { parts },
+        config: { responseMimeType: "application/json", responseSchema: strategySchema }
+    });
 
-    Based on the provided CV, the job description, and the selected CV template style ('${template}'), you will perform FIVE tasks:
+    return JSON.parse(response.text);
+};
 
-    1.  **Extract Key Skills from JD (jdKeySkills):**
-        *   Analyze the job description and extract a list of 10-15 most important skills, technologies, certifications, or personal attributes the employer is looking for. This should include both hard skills (e.g., "Python", "Project Management") and soft skills (e.g., "Team Leadership").
+// --- STAGE 2: Generate Full Tailored Application ---
+export const generateFullApplication = async (cv: string | CVFile, jobDescription: string, strategy: ApplicationStrategy, template: string): Promise<GenerationResult> => {
+    let parts: any[] = [];
+    if (typeof cv === 'string') {
+        parts.push({ text: `Original CV: ${cv}` });
+    } else {
+        parts.push({ inlineData: { mimeType: cv.mimeType, data: cv.data } });
+    }
+    
+    parts.push({ text: `Job Description: ${jobDescription}` });
+    parts.push({ text: `Approved Strategy: ${JSON.stringify(strategy)}` });
+    parts.push({ text: `Using the approved strategy, create the tailored CV, perform an ATS keyword analysis, write a detailed fit analysis (HTML), write 3 cover letters, and provide 5-7 interview prep Q&As. Ensure the tone matches the strategy.` });
 
-    2.  **Tailor the CV (tailoredCv):**
-        *   **Keyword Optimization:** Scrutinize the job description for key skills, technologies, and qualifications. Integrate these keywords naturally throughout the tailored CV, especially in the summary, experience, and skills sections.
-        *   **Reframe Experience & Augment Responsibilities:** Your primary goal is to align the candidate's experience with the job description.
-            *   Do not just copy-paste responsibilities from the old CV. Rephrase them into impactful, achievement-oriented bullet points using strong action verbs.
-            *   **Crucially, if the original CV lacks specific experiences mentioned in the job description, you must create new, relevant bullet points.** Analyze the job description's tasks and responsibilities. Then, based on the candidate's overall profile and job titles, formulate plausible achievements and responsibilities that directly correspond to the job description's requirements.
-        *   **Strategic Summary:** Write a powerful, concise professional summary (2-3 sentences) that immediately grabs the recruiter's attention.
-        *   **Curate Content:** De-emphasize or remove roles and responsibilities from the original CV that are irrelevant.
-        *   **Preserve Core Facts:** You MUST retain all specific educational institutions, degrees, diplomas, and certifications mentioned in the original CV.
-        *   **Template Adherence:** The tone and content should subtly reflect the chosen template style.
-
-    3.  **Write an Interactive Fit Analysis (analysis):**
-        *   **Objective & Professional Assessment:** Your primary goal here is to provide an honest, unbiased, and professional assessment of the candidate's fit for the role. The "Overall Fit Score" must be a realistic reflection of the alignment.
-        *   **Constructive Feedback:** Even if the fit is poor, your analysis must be constructive and empowering.
-        *   **Use Emojis:** Use emojis appropriately to make the content visually appealing.
-        *   **Format with HTML:** The entire output for the analysis must be a single, valid HTML string. Use <h2> for main headings, <strong> for important keywords, and <ul>/<li> for bulleted lists.
-        *   **Structure:** Follow this structure:
-            1.  <h2>⭐ Overall Fit Score: [Provide a realistic percentage]</h2>
-            2.  <h2>✅ Key Strengths & Alignment</h2>
-            3.  <h2>🎯 Areas to Emphasize in an Interview</h2>
-            4.  <h2>💡 Strategic Framing & Development Opportunities</h2>
-            5.  <h2>🚀 Final Verdict & Strategic Next Steps</h2>
-
-    4.  **Generate Three "Winning" Cover Letter Versions (coverLetters):**
-        *   Write three exceptionally persuasive and professional cover letters.
-        *   **Storytelling, Not Repeating:** Do not just summarize the CV. Weave a compelling narrative.
-        *   **Create Three Distinct Versions:**
-            *   **versionA:** Direct, confident, and achievement-focused.
-            *   **versionB:** Personable, storytelling approach.
-            *   **versionExtended:** Comprehensive, extended narrative with greater detail.
-
-    5.  **Generate Interview Preparation Questions & Answers (interviewPrep):**
-        *   Generate 5-7 of the most likely and challenging interview questions the candidate will face.
-        *   Provide detailed, structured sample answers using the STAR method (Situation, Task, Action, Result) for behavioral questions.
-
-    **Job Description:**
-    ---
-    ${jobDescription}
-    ---
-
-    Please provide the output as a single JSON object that strictly adheres to the provided schema.
-  `;
-
-  if (typeof cv === 'string') {
-    const prompt = `
-      ${commonPromptInfo}
-      
-      **Original CV:**
-      ---
-      ${cv}
-      ---
-      `;
-      contents = prompt;
-  } else {
-    const prompt = `
-      ${commonPromptInfo}
-      
-      The candidate's original CV is in the attached file.
-    `;
-    contents = {
-      parts: [
-        { inlineData: { mimeType: cv.mimeType, data: cv.data } },
-        { text: prompt }
-      ]
+    const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+            tailoredCv: tailoredCvSchema,
+            atsAnalysis: atsAnalysisSchema,
+            analysis: { type: Type.STRING },
+            coverLetters: { 
+                type: Type.OBJECT, 
+                properties: { versionA: { type: Type.STRING }, versionB: { type: Type.STRING }, versionExtended: { type: Type.STRING } },
+                required: ['versionA', 'versionB', 'versionExtended']
+            },
+            interviewPrep: { 
+                type: Type.ARRAY, 
+                items: { type: Type.OBJECT, properties: { question: { type: Type.STRING }, answer: { type: Type.STRING } }, required: ['question', 'answer'] }
+            }
+        },
+        required: ['tailoredCv', 'atsAnalysis', 'analysis', 'coverLetters', 'interviewPrep']
     };
-  }
 
+    const response = await ai.models.generateContent({
+        model: "gemini-3-pro-preview",
+        contents: { parts },
+        config: { responseMimeType: "application/json", responseSchema: responseSchema, temperature: 0.3 }
+    });
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview", // Upgraded to latest pro for better extraction
-    contents: contents,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: responseSchema,
-      temperature: 0.2,
-    },
-  });
+    const result = JSON.parse(response.text);
+    return { ...result, strategy };
+};
 
-  const jsonText = response.text.trim();
-  const result = JSON.parse(jsonText);
+// --- STAGE 3: Fast Refinement (Light Model) ---
+export const refineContent = async (originalContent: string, request: string, context?: { cv: any, jd: string }): Promise<string> => {
+    const prompt = `
+        Context Job Description: ${context?.jd || 'Not provided'}
+        Refinement Request: ${request}
+        Original Content to Refine: "${originalContent}"
+        
+        Act as a professional resume editor. Provide ONLY the improved text. Keep it concise, punchy, and achievement-oriented.
+    `;
 
-  if (result.tailoredCv && result.analysis && result.coverLetters && result.interviewPrep && result.jdKeySkills) {
-    return result as GenerationResult;
-  } else {
-    throw new Error("Invalid response structure from API.");
-  }
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-lite-latest",
+        contents: prompt,
+        config: { temperature: 0.7 }
+    });
+
+    return response.text.trim();
 };

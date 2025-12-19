@@ -1,11 +1,13 @@
-// Fix: Implemented the main App component to structure the application.
+
 import React, { useReducer, useEffect } from 'react';
 import InputPanel from './components/InputPanel';
 import ResumePreview from './components/ResumePreview';
 import OutputPanel from './components/OutputPanel';
 import HistoryPanel from './components/HistoryPanel';
-import { TailoredCV, CVFile, CvTemplate, HistoryEntry, GenerationResult } from './types';
-import { generateCvAndCoverLetter } from './services/geminiService';
+import StrategyPanel from './components/StrategyPanel';
+import QuickEditPanel from './components/QuickEditPanel';
+import { TailoredCV, CVFile, CvTemplate, HistoryEntry, GenerationResult, ApplicationStrategy } from './types';
+import { generateApplicationStrategy, generateFullApplication, refineContent } from './services/geminiService';
 import ThemeSwitcher from './components/ThemeSwitcher';
 
 interface AppState {
@@ -13,10 +15,13 @@ interface AppState {
   cvFile: CVFile | null;
   jobDescription: string;
   selectedTemplate: CvTemplate;
-  generationState: 'idle' | 'loading' | 'success' | 'error';
+  generationState: 'idle' | 'loading-strategy' | 'awaiting-strategy-approval' | 'loading-application' | 'success' | 'error';
   error: string | null;
+  strategy: ApplicationStrategy | null;
   result: GenerationResult | null;
   history: HistoryEntry[];
+  refinementResult: string;
+  isRefining: boolean;
 }
 
 type AppAction =
@@ -24,11 +29,16 @@ type AppAction =
   | { type: 'SET_CV_FILE'; payload: CVFile | null }
   | { type: 'SET_JOB_DESCRIPTION'; payload: string }
   | { type: 'SET_TEMPLATE'; payload: CvTemplate }
-  | { type: 'GENERATE_START' }
-  | { type: 'GENERATE_SUCCESS'; payload: { result: GenerationResult; entry: HistoryEntry } }
+  | { type: 'GENERATE_STRATEGY_START' }
+  | { type: 'GENERATE_STRATEGY_SUCCESS'; payload: ApplicationStrategy }
+  | { type: 'GENERATE_APPLICATION_START' }
+  | { type: 'GENERATE_APPLICATION_SUCCESS'; payload: { result: GenerationResult; entry: HistoryEntry } }
   | { type: 'GENERATE_ERROR'; payload: string }
   | { type: 'RESTORE_HISTORY'; payload: HistoryEntry }
   | { type: 'SET_HISTORY'; payload: HistoryEntry[] }
+  | { type: 'SET_REFINEMENT'; payload: string }
+  | { type: 'SET_REFINING'; payload: boolean }
+  | { type: 'RESET_WORKFLOW' }
   | { type: 'CLEAR_HISTORY' };
 
 const initialState: AppState = {
@@ -38,28 +48,27 @@ const initialState: AppState = {
   selectedTemplate: 'modern',
   generationState: 'idle',
   error: null,
+  strategy: null,
   result: null,
   history: [],
+  refinementResult: '',
+  isRefining: false,
 };
 
 const appReducer = (state: AppState, action: AppAction): AppState => {
   switch (action.type) {
-    case 'SET_CV':
-      return { ...state, cv: action.payload, cvFile: null };
-    case 'SET_CV_FILE':
-      return { ...state, cvFile: action.payload, cv: '' };
-    case 'SET_JOB_DESCRIPTION':
-      return { ...state, jobDescription: action.payload };
-    case 'SET_TEMPLATE':
-      return { ...state, selectedTemplate: action.payload };
-    case 'GENERATE_START':
-      return { ...state, generationState: 'loading', error: null, result: null };
-    case 'GENERATE_SUCCESS':
+    case 'SET_CV': return { ...state, cv: action.payload, cvFile: null };
+    case 'SET_CV_FILE': return { ...state, cvFile: action.payload, cv: '' };
+    case 'SET_JOB_DESCRIPTION': return { ...state, jobDescription: action.payload };
+    case 'SET_TEMPLATE': return { ...state, selectedTemplate: action.payload };
+    case 'GENERATE_STRATEGY_START': return { ...state, generationState: 'loading-strategy', error: null, strategy: null };
+    case 'GENERATE_STRATEGY_SUCCESS': return { ...state, generationState: 'awaiting-strategy-approval', strategy: action.payload };
+    case 'GENERATE_APPLICATION_START': return { ...state, generationState: 'loading-application', error: null };
+    case 'GENERATE_APPLICATION_SUCCESS':
       const newHistory = [action.payload.entry, ...state.history];
       localStorage.setItem('cvHistory', JSON.stringify(newHistory));
       return { ...state, generationState: 'success', result: action.payload.result, history: newHistory };
-    case 'GENERATE_ERROR':
-      return { ...state, generationState: 'error', error: action.payload };
+    case 'GENERATE_ERROR': return { ...state, generationState: 'error', error: action.payload };
     case 'RESTORE_HISTORY':
       return {
         ...state,
@@ -68,66 +77,52 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         jobDescription: action.payload.jobDescription,
         selectedTemplate: action.payload.template,
         result: action.payload.result,
+        strategy: action.payload.result.strategy,
         generationState: 'success',
-        error: null,
       };
-    case 'SET_HISTORY':
-      return { ...state, history: action.payload };
+    case 'SET_HISTORY': return { ...state, history: action.payload };
+    case 'SET_REFINEMENT': return { ...state, refinementResult: action.payload, isRefining: false };
+    case 'SET_REFINING': return { ...state, isRefining: action.payload };
+    case 'RESET_WORKFLOW': return { ...state, generationState: 'idle', strategy: null, result: null };
     case 'CLEAR_HISTORY':
       localStorage.removeItem('cvHistory');
       return { ...state, history: [] };
-    default:
-      return state;
+    default: return state;
   }
 };
 
-
 const App: React.FC = () => {
   const [state, dispatch] = useReducer(appReducer, initialState);
-  const isLoading = state.generationState === 'loading';
+  const isLoading = state.generationState.startsWith('loading');
 
   useEffect(() => {
     try {
       const savedHistory = localStorage.getItem('cvHistory');
-      if (savedHistory) {
-        dispatch({ type: 'SET_HISTORY', payload: JSON.parse(savedHistory) });
-      }
-    } catch (error) {
-      console.error("Failed to parse history from localStorage", error);
-      localStorage.removeItem('cvHistory');
-    }
+      if (savedHistory) dispatch({ type: 'SET_HISTORY', payload: JSON.parse(savedHistory) });
+    } catch (e) { localStorage.removeItem('cvHistory'); }
   }, []);
 
-  const handleCvFileChange = (file: File | null) => {
-    if (!file) {
-      dispatch({ type: 'SET_CV_FILE', payload: null });
-      return;
-    }
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
-      const base64Data = base64String.split(',')[1];
-      dispatch({
-        type: 'SET_CV_FILE',
-        payload: { name: file.name, mimeType: file.type, data: base64Data },
-      });
-    };
-    reader.onerror = () => {
-      dispatch({ type: 'GENERATE_ERROR', payload: 'Failed to read the file.' });
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleGenerate = async () => {
+  const handleStartStrategy = async () => {
     const cvInput = state.cvFile || state.cv;
     if (!cvInput || !state.jobDescription) {
       dispatch({ type: 'GENERATE_ERROR', payload: 'Please provide both your CV and the job description.' });
       return;
     }
-    dispatch({ type: 'GENERATE_START' });
-
+    dispatch({ type: 'GENERATE_STRATEGY_START' });
     try {
-      const result = await generateCvAndCoverLetter(cvInput, state.jobDescription, state.selectedTemplate);
+      const strategy = await generateApplicationStrategy(cvInput, state.jobDescription);
+      dispatch({ type: 'GENERATE_STRATEGY_SUCCESS', payload: strategy });
+    } catch (e: any) {
+      dispatch({ type: 'GENERATE_ERROR', payload: e.message });
+    }
+  };
+
+  const handleExecuteApplication = async () => {
+    if (!state.strategy) return;
+    dispatch({ type: 'GENERATE_APPLICATION_START' });
+    try {
+      const cvInput = state.cvFile || state.cv;
+      const result = await generateFullApplication(cvInput!, state.jobDescription, state.strategy, state.selectedTemplate);
       const newEntry: HistoryEntry = {
         id: crypto.randomUUID(),
         timestamp: Date.now(),
@@ -137,90 +132,110 @@ const App: React.FC = () => {
         result,
         template: state.selectedTemplate,
       };
-      dispatch({ type: 'GENERATE_SUCCESS', payload: { result, entry: newEntry } });
-    } catch (e) {
-      console.error(e);
-      let errorMessage = 'An error occurred while generating the content. Please try again.';
-      if (e instanceof Error) {
-        errorMessage = `An error occurred: ${e.message}. Please check the console for more details.`;
-      }
-      dispatch({ type: 'GENERATE_ERROR', payload: errorMessage });
+      dispatch({ type: 'GENERATE_APPLICATION_SUCCESS', payload: { result, entry: newEntry } });
+    } catch (e: any) {
+      dispatch({ type: 'GENERATE_ERROR', payload: e.message });
     }
   };
 
-  const handleRestoreHistory = (entry: HistoryEntry) => {
-    if (isLoading) return;
-    dispatch({ type: 'RESTORE_HISTORY', payload: entry });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const handleRefine = async (text: string, request: string) => {
+    dispatch({ type: 'SET_REFINING', payload: true });
+    try {
+      const result = await refineContent(text, request, { cv: state.result?.tailoredCv, jd: state.jobDescription });
+      dispatch({ type: 'SET_REFINEMENT', payload: result });
+    } catch (e: any) {
+      dispatch({ type: 'SET_REFINING', payload: false });
+    }
   };
-
 
   return (
     <div className="bg-gray-50 dark:bg-gray-900 min-h-screen flex flex-col transition-colors duration-300">
-      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10 transition-colors duration-300">
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-50 transition-colors duration-300">
         <div className="max-w-screen-2xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold leading-tight text-gray-900 dark:text-gray-100">
-              🚀 AI toolkit for job applications
+            <h1 className="text-2xl font-bold leading-tight text-gray-900 dark:text-gray-100 flex items-center gap-2">
+              🚀 Application Toolkit <span className="text-xs bg-brand-primary text-white px-2 py-0.5 rounded-full font-normal">v2.0 Elite</span>
             </h1>
-            <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
-              Tailor your CV, generate winning cover letters, and ace the interview with AI-powered prep.
-            </p>
-             <p className="text-gray-500 dark:text-gray-500 text-xs mt-1">
-              by <a href="https://www.linkedin.com/in/vassiliy-lakhonin/" target="_blank" rel="noopener noreferrer" className="text-brand-primary hover:underline">Vassiliy Lakhonin</a>
-            </p>
+            <p className="text-gray-600 dark:text-gray-400 text-sm">Strategic Multi-Stage AI Application Builder</p>
           </div>
           <ThemeSwitcher />
         </div>
       </header>
+      
       <main className="py-8 flex-grow">
         <div className="max-w-screen-2xl mx-auto sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 xl:grid-cols-4 gap-8 items-start">
-            <div className="xl:col-span-1 flex flex-col gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            
+            {/* LEFT COLUMN: Input & Strategy */}
+            <div className="lg:col-span-3 flex flex-col gap-8">
               <InputPanel
                 cv={state.cv}
-                onCvChange={(value) => dispatch({ type: 'SET_CV', payload: value })}
+                onCvChange={(v) => dispatch({ type: 'SET_CV', payload: v })}
                 jobDescription={state.jobDescription}
-                onJobDescriptionChange={(value) => dispatch({ type: 'SET_JOB_DESCRIPTION', payload: value })}
-                onGenerate={handleGenerate}
+                onJobDescriptionChange={(v) => dispatch({ type: 'SET_JOB_DESCRIPTION', payload: v })}
+                onGenerate={handleStartStrategy}
                 isLoading={isLoading}
                 error={state.error}
                 cvFile={state.cvFile}
-                onFileChange={handleCvFileChange}
+                onFileChange={(f) => {
+                    if(!f) { dispatch({type: 'SET_CV_FILE', payload: null}); return; }
+                    const r = new FileReader();
+                    r.onload = () => dispatch({type: 'SET_CV_FILE', payload: {name: f.name, mimeType: f.type, data: (r.result as string).split(',')[1]}});
+                    r.readAsDataURL(f);
+                }}
                 onRemoveFile={() => dispatch({ type: 'SET_CV_FILE', payload: null })}
                 selectedTemplate={state.selectedTemplate}
-                onTemplateChange={(value) => dispatch({ type: 'SET_TEMPLATE', payload: value })}
+                onTemplateChange={(v) => dispatch({ type: 'SET_TEMPLATE', payload: v })}
               />
+
+              {state.strategy && (
+                <StrategyPanel 
+                  strategy={state.strategy} 
+                  onExecute={handleExecuteApplication} 
+                  isExecuting={state.generationState === 'loading-application'}
+                  isCompleted={state.generationState === 'success'}
+                />
+              )}
+
               <HistoryPanel
                 history={state.history}
-                onRestore={handleRestoreHistory}
+                onRestore={(entry) => dispatch({ type: 'RESTORE_HISTORY', payload: entry })}
                 onClear={() => dispatch({ type: 'CLEAR_HISTORY' })}
                 isLoading={isLoading}
               />
             </div>
-            <div className="xl:col-span-2">
-                <ResumePreview cvData={state.result?.tailoredCv ?? null} isLoading={isLoading} template={state.selectedTemplate} />
-            </div>
-            <div className="xl:col-span-1 flex flex-col gap-8">
-                <OutputPanel 
-                    analysis={state.result?.analysis ?? ''} 
-                    coverLetters={state.result?.coverLetters ?? null} 
-                    interviewPrep={state.result?.interviewPrep ?? null} 
-                    isLoading={isLoading}
-                    tailoredCv={state.result?.tailoredCv ?? null}
-                    jdKeySkills={state.result?.jdKeySkills}
+
+            {/* MIDDLE COLUMN: Resume Preview */}
+            <div className="lg:col-span-6">
+                <ResumePreview 
+                  cvData={state.result?.tailoredCv ?? null} 
+                  isLoading={state.generationState === 'loading-application'} 
+                  template={state.selectedTemplate} 
                 />
             </div>
+
+            {/* RIGHT COLUMN: Analysis & Quick Edit */}
+            <div className="lg:col-span-3 flex flex-col gap-8">
+                <OutputPanel 
+                    analysis={state.result?.analysis ?? ''} 
+                    atsAnalysis={state.result?.atsAnalysis ?? null}
+                    coverLetters={state.result?.coverLetters ?? null} 
+                    interviewPrep={state.result?.interviewPrep ?? null} 
+                    isLoading={state.generationState === 'loading-application'}
+                    tailoredCv={state.result?.tailoredCv ?? null}
+                />
+                <QuickEditPanel 
+                    onGenerate={handleRefine}
+                    result={state.refinementResult}
+                    isLoading={state.isRefining}
+                    error={null}
+                    isContextReady={!!state.result}
+                />
+            </div>
+
           </div>
         </div>
       </main>
-      <footer className="py-6 px-4 sm:px-6 lg:px-8 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 transition-colors duration-300">
-        <div className="max-w-screen-2xl mx-auto text-center text-sm text-gray-500 dark:text-gray-400">
-          <p>
-            <strong>A Note on AI-Generated Content:</strong> While this AI-powered tool is a powerful assistant, it's not infallible. I strongly recommend you review and personalize all generated content. Your unique voice and a final human touch are crucial for making the best impression and securing your dream job. Good luck!
-          </p>
-        </div>
-      </footer>
     </div>
   );
 };

@@ -1,11 +1,26 @@
-// Fix: Added type definitions for the application.
 
 export type CvTemplate = 'modern' | 'classic' | 'creative' | 'minimalist' | 'corporate' | 'elegant' | 'tech' | 'infographic' | 'bold';
 
 export interface CVFile {
   name: string;
   mimeType: string;
-  data: string; // base64 encoded string (without the data URL prefix)
+  data: string;
+}
+
+export interface ApplicationStrategy {
+  suggestedTone: string;
+  keyAchievementsToHighlight: string[];
+  perceivedGaps: string[];
+  narrativeAngle: string;
+  priorityKeywords: string[];
+}
+
+export interface ATSAnalysis {
+  overallMatchScore: number;
+  foundHardSkills: { skill: string; found: boolean }[];
+  foundSoftSkills: { skill: string; found: boolean }[];
+  missingKeywords: string[];
+  formattingRisk: 'Low' | 'Medium' | 'High';
 }
 
 export interface TailoredCV {
@@ -30,32 +45,17 @@ export interface TailoredCV {
     dates: string;
   }[];
   skills: string[];
-  certifications?: {
-    name: string;
-    issuer?: string;
-    date?: string;
-  }[];
-  awards?: {
-    name: string;
-    issuer?: string;
-    date?: string;
-  }[];
-  publications?: {
-    title: string;
-    journal?: string;
-    date?: string;
-  }[];
-  professionalDevelopment?: {
-    name: string;
-    institution?: string;
-    date?: string;
-  }[];
+  certifications?: { name: string; issuer?: string; date?: string }[];
+  awards?: { name: string; issuer?: string; date?: string }[];
+  publications?: { title: string; journal?: string; date?: string }[];
+  professionalDevelopment?: { name: string; institution?: string; date?: string }[];
 }
 
 export interface GenerationResult {
+    strategy: ApplicationStrategy;
     tailoredCv: TailoredCV;
-    jdKeySkills: string[];
-    analysis: string;
+    atsAnalysis: ATSAnalysis;
+    analysis: string; // Detailed fit analysis HTML
     coverLetters: {
         versionA: string;
         versionB: string;
