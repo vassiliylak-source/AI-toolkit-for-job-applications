@@ -9,6 +9,7 @@ import QuickEditPanel from './components/QuickEditPanel';
 import { TailoredCV, CVFile, CvTemplate, HistoryEntry, GenerationResult, ApplicationStrategy } from './types';
 import { generateApplicationStrategy, generateFullApplication, refineContent } from './services/geminiService';
 import ThemeSwitcher from './components/ThemeSwitcher';
+import { LinkedInIcon } from './components/Icons';
 
 interface AppState {
   cv: string;
@@ -174,7 +175,18 @@ const App: React.FC = () => {
             </h1>
             <p className="text-gray-600 dark:text-gray-400 text-sm">Next-Gen Multi-Stage Career Growth Platform</p>
           </div>
-          <ThemeSwitcher />
+          <div className="flex items-center gap-6">
+            <a 
+              href="https://www.linkedin.com/in/vassiliy-lakhonin/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-primary transition-all group"
+            >
+              <LinkedInIcon className="w-5 h-5 transition-transform group-hover:scale-110" />
+              <span className="hidden md:inline">Connect to Author</span>
+            </a>
+            <ThemeSwitcher />
+          </div>
         </div>
       </header>
       
